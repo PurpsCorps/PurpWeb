@@ -16,12 +16,19 @@ class Order extends Model
         'client_fullname',
         'client_email',
         'client_dob',
-        'product',
-        'product_label',
-        'product_price',
+        'order_items',
         'quantity',
         'price_total',
         'payment_method',
         'status',
     ];
+
+    protected $casts = [
+        'order_items' => 'array',
+    ];
+
+    public function setOrderItemsAttribute($value)
+    {
+        $this->attributes['order_items'] = json_encode($value);
+    }
 }

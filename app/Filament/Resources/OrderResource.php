@@ -9,6 +9,7 @@ use Filament\Tables;
 use App\Models\Order;
 use App\Models\Product;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Forms\Form;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
@@ -16,9 +17,6 @@ use Filament\Resources\Resource;
 use Filament\Tables\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\OrderResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\OrderResource\RelationManagers;
-use Illuminate\Routing\Route;
 
 class OrderResource extends Resource
 {
@@ -35,118 +33,122 @@ class OrderResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Section::make('Client Information')
-                ->description('Add the client information here!')
-                ->schema([
-                    Forms\Components\Select::make('username')
-                        ->native(false)
-                        ->label('Client')
-                        ->options(User::query()->pluck('fullname', 'name'))
-                        ->reactive()
-                        ->afterStateUpdated(fn ($state, Forms\Set $set) =>
-                            $set('client_fullname', User::query()->where('name', $state)->pluck('fullname')[0] ?? $state . " -> Invalid Plug") &&
-                            $set('client_email', User::query()->where('name', $state)->pluck('email')[0] ?? $state . " -> Invalid Plug") &&
-                            $set('client_dob', User::query()->where('name', $state)->pluck('date_of_birth')[0] ?? $state . " -> Invalid Plug"))
-                        ->distinct()
-                        ->disableOptionsWhenSelectedInSiblingRepeaterItems()
-                        ->searchable()
-                        ->required(),
-                    Forms\Components\TextInput::make('client_fullname')
-                        ->label('Client Name')
-                        ->disabled()
-                        ->dehydrated(),
-                    Forms\Components\TextInput::make('client_email')
-                        ->label('Email')
-                        ->disabled()
-                        ->dehydrated(),
-                    Forms\Components\TextInput::make('client_dob')
-                        ->label('Date of Birth')
-                        ->disabled()
-                        ->dehydrated(),
-                ]),
+                    ->schema([
+                        Forms\Components\Select::make('username')
+                            ->label('Client')
+                            ->options(User::pluck('fullname', 'id'))
+                            ->searchable()
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                $user = User::find($state);
+                                if ($user) {
+                                    $set('client_fullname', $user->fullname);
+                                    $set('client_email', $user->email);
+                                    $set('client_dob', $user->date_of_birth);
+                                }
+                            }),
+                        Forms\Components\TextInput::make('client_fullname')
+                            ->label('Client Name')
+                            ->disabled()
+                            ->dehydrated(),
+                        Forms\Components\TextInput::make('client_email')
+                            ->label('Email')
+                            ->disabled()
+                            ->dehydrated(),
+                        Forms\Components\DatePicker::make('client_dob')
+                            ->label('Date of Birth')
+                            ->disabled()
+                            ->dehydrated(),
+                    ]),
                 Forms\Components\Section::make('Order Information')
-                ->description('Add the order information here!')
-                ->schema([
-                    Forms\Components\TextInput::make('order_id')
-                    ->label('Order ID')
-                        ->default('PURPS/'.date('m').'/'.strtoupper(Str::random(5)))
-                        ->disabled()
-                        ->dehydrated()
-                        ->required(),
-                    Forms\Components\Select::make('product')
-                        ->label('Select Product')
-                        ->native(false)
-                        ->options(Product::query()->pluck('label', 'name'))
-                        ->reactive()
-                        ->afterStateUpdated(fn ($state, Forms\Set $set, Forms\Get $get) =>
-                            $set('product_label', Product::query()->where('name', $get('product'))->pluck('label')[0] ?? 'No Label') &&
-                            $set('product_price', (int)Product::query()->where('name', $get('product'))->pluck('price')[0] ?? 0)
-                        )
-                        ->distinct()
-                        ->live()
-                        ->required(),
-                    Forms\Components\TextInput::make('product_label')
-                        ->label('Product Name')
-                        ->disabled()
-                        ->dehydrated(),
-                    Forms\Components\TextInput::make('product_price')
-                        ->label('Product Price')
-                        ->prefix('Rp.')
-                        ->default(0)
-                        ->disabled()
-                        ->dehydrated()
-                        ->numeric(),
-                    Forms\Components\TextInput::make('quantity')
-                        ->default(0)
-                        ->reactive()
-                        ->afterStateUpdated(fn ($state, Forms\Set $set, Forms\Get $get) =>
-                            $set('price_total', (int)Product::query()->where('name', $get('product'))->pluck('price')[0]*$state ?? 0)
-                        )
-                        ->distinct()
-                        ->required()
-                        ->live()
-                        ->numeric(),
-                    Forms\Components\TextInput::make('price_total')
-                        ->label('Price Total')
-                        ->prefix('Rp.')
-                        ->default(0)
-                        ->required()
-                        ->disabled()
-                        ->dehydrated()
-                        ->numeric(),
-                    Forms\Components\Select::make('payment_method')
-                        ->native(false)
-                        ->label('Payment Method')
-                        ->options([
-                            'GoPay' => 'GoPay',
-                            'OVO' => 'OVO',
-                            'Bank' => 'Bank',
-                            'QRIS' => 'QRIS',
-                            'Saldo' => 'Saldo',
-                        ])
-                        ->required(),
-                    Forms\Components\Select::make('status')
-                        ->native(false)
-                        ->options([
-                            'Payment Receive' => 'Payment Receive',
-                            'On Process' => 'On Process',
-                            'Pending' => 'Pending',
-                            'Completed' => 'Completed',
-                            'Canceled' => 'Canceled',
-                        ])
-                        ->required()
-                        ->live(),
-                ])
+                    ->schema([
+                        Forms\Components\TextInput::make('order_id')
+                            ->label('Order ID')
+                            ->default(fn () => 'PURPS/' . date('m') . '/' . strtoupper(Str::random(5)))
+                            ->disabled()
+                            ->dehydrated()
+                            ->required(),
+                        Forms\Components\Repeater::make('order_items')
+                            ->schema([
+                                Forms\Components\Select::make('product_id')
+                                    ->label('Product')
+                                    ->options(Product::pluck('label', 'id'))
+                                    ->searchable()
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Set $set) {
+                                        $product = Product::find($state);
+                                        if ($product) {
+                                            $set('product_price', $product->price);
+                                        }
+                                    }),
+                                Forms\Components\TextInput::make('product_price')
+                                    ->label('Price')
+                                    ->disabled()
+                                    ->dehydrated()
+                                    ->numeric()
+                                    ->prefix('Rp.'),
+                                Forms\Components\TextInput::make('quantity')
+                                    ->label('Quantity')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->live()
+                                    ->required(),
+                                Forms\Components\Placeholder::make('subtotal')
+                                    ->label('Subtotal')
+                                    ->content(function (Get $get) {
+                                        return 'Rp. ' . number_format($get('product_price') * $get('quantity'), 0, ',', '.');
+                                    }),
+                            ])
+                            ->columns(4)
+                            ->dehydrated(true)
+                            ->defaultItems(1)
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set) {
+                                $total = collect($get('order_items'))->sum(fn ($item) => ($item['product_price'] ?? 0) * ($item['quantity'] ?? 0));
+                                $set('price_total', $total);
+                            }),
+                        Forms\Components\TextInput::make('price_total')
+                            ->label('Total Price')
+                            ->disabled()
+                            ->dehydrated()
+                            ->numeric()
+                            ->prefix('Rp.'),
+                        Forms\Components\Select::make('payment_method')
+                            ->native(false)
+                            ->label('Payment Method')
+                            ->options([
+                                'GoPay' => 'GoPay',
+                                'OVO' => 'OVO',
+                                'Bank' => 'Bank',
+                                'QRIS' => 'QRIS',
+                                'Saldo' => 'Saldo',
+                            ])
+                            ->required(),
+                        Forms\Components\Select::make('status')
+                            ->native(false)
+                            ->options([
+                                'Payment Received' => 'Payment Received',
+                                'On Process' => 'On Process',
+                                'Pending' => 'Pending',
+                                'Completed' => 'Completed',
+                                'Canceled' => 'Canceled',
+                            ])
+                            ->required()
+                            ->live(),
+                    ]),
             ]);
     }
 
     public static function getNavigationBadge(): ?string
     {
-        return Order::query()->where('status', 'Payment Receive')->count() . ' / ' . Order::query()->count();
+        return Order::query()->where('status', 'Payment Received')->count() . ' / ' . Order::query()->count();
     }
 
     public static function getNavigationBadgeColor(): ?string
     {
-        return Order::query()->where('status', 'Payment Receive')->count() > 0 ? 'warning' : 'primary';
+        return Order::query()->where('status', 'Payment Received')->count() > 0 ? 'warning' : 'primary';
     }
 
     public static function table(Table $table): Table
@@ -157,42 +159,53 @@ class OrderResource extends Resource
                     ->label('Order ID')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('client_fullname')
-                    ->label('Client')
+                    ->label('Client Name')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('product_label')
-                    ->label('Product')
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('product_price')
-                    ->label('Product Price')
-                    ->prefix('Rp.')
-                    ->numeric()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('quantity')
-                    ->numeric()
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('order_items')
+                    ->label('Order Items')
+                    ->getStateUsing(function (Order $record): string {
+                        $items = $record->order_items;
+
+                        if (!is_array($items)) {
+                            return 'Invalid data';
+                        }
+
+                        $formattedItems = array_map(function ($item) {
+                            $productId = $item['product_id'] ?? null;
+                            $quantity = $item['quantity'] ?? 0;
+                            $product = $productId ? Product::find($productId) : null;
+
+                            if (!$product) {
+                                return "Unknown product (x{$quantity})";
+                            }
+                            return "{$product->label} (x{$quantity})";
+                        }, $items);
+
+                        return implode(', ', $formattedItems);
+                    })
+                    ->wrap()
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('products', function ($query) use ($search) {
+                            $query->where('label', 'like', "%{$search}%");
+                        });
+                    }),
                 Tables\Columns\TextColumn::make('price_total')
-                    ->label('Price Total')
-                    ->prefix('Rp.')
-                    ->numeric()
+                    ->label('Total Price')
+                    ->money('IDR')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('payment_method')
                     ->label('Payment')
-                    ->badge()
-                    ->searchable(),
+                    ->badge(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'Payment Receive' => 'info',
-                        'On Process' => 'process',
-                        'Pending' => 'warning',
+                        'Payment Received' => 'info',
+                        'On Process' => 'warning',
+                        'Pending' => 'danger',
                         'Completed' => 'success',
                         'Canceled' => 'danger',
                     }),
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -201,9 +214,40 @@ class OrderResource extends Resource
                 //
             ])
             ->actions([
+                Action::make('process')
+                    ->button()
+                    ->label('Process')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->action(function (Order $record) {
+                        $record->update(['status' => 'On Process']);
+                    })
+                    ->requiresConfirmation()
+                    ->hidden(fn (Order $record): bool => $record->status === 'On Process' || $record->status === 'Completed' || $record->status === 'Canceled')
+                    ->successNotificationTitle('Order marked as On Process'),
+                Action::make('complete')
+                    ->button()
+                    ->label('Complete')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->action(function (Order $record) {
+                        $record->update(['status' => 'Completed']);
+                    })
+                    ->requiresConfirmation()
+                    ->hidden(fn (Order $record): bool => $record->status === 'Completed' || $record->status === 'Canceled')
+                    ->successNotificationTitle('Order marked as completed'),
+                Action::make('cancel')
+                        ->button()
+                        ->label('Cancel')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->action(function (Order $record) {
+                            $record->update(['status' => 'Canceled']);
+                        })
+                        ->requiresConfirmation()
+                        ->hidden(fn (Order $record): bool => $record->status === 'Canceled' || $record->status === 'Completed')
+                        ->successNotificationTitle('Order marked as Canceled'),
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make()
-                ->successRedirectUrl(env('APP_URL').'/admin'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

@@ -67,6 +67,7 @@ class ProductResource extends Resource
                     ->disk('public')
                     ->circular(),
                 Tables\Columns\TextColumn::make('name')
+                    ->label('Product ID')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('label')
                     ->searchable(),

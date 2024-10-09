@@ -37,6 +37,12 @@ class EmployeeResource extends Resource
                 Forms\Components\Section::make('Employee Information')
                 ->description('Add the employee information here!')
                 ->schema([
+                    Forms\Components\FileUpload::make('avatar')
+                        ->avatar()
+                        ->disk('public')
+                        ->disabled()
+                        ->dehydrated()
+                        ->required(),
                     Forms\Components\TextInput::make('name')
                         ->label('Full Name')
                         ->default('Select Username First!')
@@ -50,7 +56,8 @@ class EmployeeResource extends Resource
                         ->required()
                         ->reactive()
                         ->afterStateUpdated(fn ($state, Forms\Set $set) =>
-                            $set('email', User::query()->where('name', $state)->pluck('email')[0] ?? $state . " -> Invalid Plug") &&
+                            $set('avatar', (string)User::query()->where('name', $state)->pluck('avatar')[0] ?? $state . " -> Invalid Plug") &&
+                            $set('email', (string)User::query()->where('name', $state)->pluck('avatar')[0] ?? $state . " -> Invalid Plug") &&
                             $set('name', User::query()->where('name', $state)->pluck('fullname')[0] ?? $state . " -> Invalid Plug") &&
                             $set('date_of_birth', User::query()->where('name', $state)->pluck('date_of_birth')[0] ?? $state . " -> Invalid Plug"))
                         ->distinct()
