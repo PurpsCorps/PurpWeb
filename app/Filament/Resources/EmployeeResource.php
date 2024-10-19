@@ -37,12 +37,6 @@ class EmployeeResource extends Resource
                 Forms\Components\Section::make('Employee Information')
                 ->description('Add the employee information here!')
                 ->schema([
-                    Forms\Components\FileUpload::make('avatar')
-                        ->avatar()
-                        ->disk('public')
-                        ->disabled()
-                        ->dehydrated()
-                        ->required(),
                     Forms\Components\TextInput::make('name')
                         ->label('Full Name')
                         ->default('Select Username First!')

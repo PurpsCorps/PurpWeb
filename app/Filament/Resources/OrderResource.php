@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use Closure;
 use Filament\Forms;
+use App\Models\Meja;
 use App\Models\User;
 use Filament\Tables;
 use App\Models\Order;
@@ -13,8 +14,11 @@ use Filament\Forms\Set;
 use Filament\Forms\Form;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Resources\Resource;
+use Illuminate\Support\Facades\DB;
 use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\OrderResource\Pages;
 
@@ -22,52 +26,58 @@ class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
 
+    protected static ?int $navigationSort = 1;
+
     protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
 
     protected static ?string $navigationGroup = 'Order Management';
 
-    protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                Forms\Components\Section::make('Client Information')
-                    ->schema([
-                        Forms\Components\Select::make('username')
-                            ->label('Client')
-                            ->options(User::pluck('fullname', 'id'))
-                            ->searchable()
-                            ->required()
-                            ->live()
-                            ->afterStateUpdated(function ($state, Set $set) {
-                                $user = User::find($state);
-                                if ($user) {
-                                    $set('client_fullname', $user->fullname);
-                                    $set('client_email', $user->email);
-                                    $set('client_dob', $user->date_of_birth);
-                                }
-                            }),
-                        Forms\Components\TextInput::make('client_fullname')
-                            ->label('Client Name')
-                            ->disabled()
-                            ->dehydrated(),
-                        Forms\Components\TextInput::make('client_email')
-                            ->label('Email')
-                            ->disabled()
-                            ->dehydrated(),
-                        Forms\Components\DatePicker::make('client_dob')
-                            ->label('Date of Birth')
-                            ->disabled()
-                            ->dehydrated(),
-                    ]),
+                // Forms\Components\Section::make('Client Information')
+                //     ->schema([
+                //         Forms\Components\Select::make('username')
+                //             ->label('Client')
+                //             ->options(User::pluck('fullname', 'id'))
+                //             ->searchable()
+                //             ->required()
+                //             ->live()
+                //             ->afterStateUpdated(function ($state, Set $set) {
+                //                 $user = User::find($state);
+                //                 if ($user) {
+                //                     $set('client_fullname', $user->fullname);
+                //                     $set('client_email', $user->email);
+                //                     $set('client_dob', $user->date_of_birth);
+                //                 }
+                //             }),
+                //         Forms\Components\TextInput::make('client_fullname')
+                //             ->label('Client Name')
+                //             ->disabled()
+                //             ->dehydrated(),
+                //         Forms\Components\TextInput::make('client_email')
+                //             ->label('Email')
+                //             ->disabled()
+                //             ->dehydrated(),
+                //         Forms\Components\DatePicker::make('client_dob')
+                //             ->label('Date of Birth')
+                //             ->disabled()
+                //             ->dehydrated(),
+                //     ]),
                 Forms\Components\Section::make('Order Information')
                     ->schema([
                         Forms\Components\TextInput::make('order_id')
                             ->label('Order ID')
-                            ->default(fn () => 'PURPS/' . date('m') . '/' . strtoupper(Str::random(5)))
+                            ->default(fn () => 'SERUIT/' . date('m') . '/' . strtoupper(Str::random(3)) . '/' . Order::query()->count()+1)
                             ->disabled()
                             ->dehydrated()
+                            ->required(),
+                        Forms\Components\Select::make('meja')
+                            ->native(false)
+                            ->label('Meja')
+                            ->options(Meja::query()->where('status', 'available')->pluck('name', 'name'))
                             ->required(),
                         Forms\Components\Repeater::make('order_items')
                             ->schema([
@@ -81,6 +91,7 @@ class OrderResource extends Resource
                                         $product = Product::find($state);
                                         if ($product) {
                                             $set('product_price', $product->price);
+                                            $set('available_stock', $product->stock);
                                         }
                                     }),
                                 Forms\Components\TextInput::make('product_price')
@@ -89,12 +100,27 @@ class OrderResource extends Resource
                                     ->dehydrated()
                                     ->numeric()
                                     ->prefix('Rp.'),
+                                Forms\Components\TextInput::make('available_stock')
+                                    ->label('Available Stock')
+                                    ->disabled()
+                                    ->dehydrated(false),
                                 Forms\Components\TextInput::make('quantity')
                                     ->label('Quantity')
                                     ->numeric()
                                     ->default(0)
                                     ->live()
-                                    ->required(),
+                                    ->required()
+                                    ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                        $availableStock = $get('available_stock');
+                                        if ($state > $availableStock) {
+                                            Notification::make()
+                                                ->title('Insufficient stock')
+                                                ->body("Only {$availableStock} items available.")
+                                                ->danger()
+                                                ->send();
+                                            $set('quantity', $availableStock);
+                                        }
+                                    }),
                                 Forms\Components\Placeholder::make('subtotal')
                                     ->label('Subtotal')
                                     ->content(function (Get $get) {
@@ -138,7 +164,9 @@ class OrderResource extends Resource
                             ->required()
                             ->live(),
                     ]),
-            ]);
+            ])
+            ->statePath('data')
+            ->model(Order::class);
     }
 
     public static function getNavigationBadge(): ?string
@@ -158,8 +186,8 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('order_id')
                     ->label('Order ID')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('client_fullname')
-                    ->label('Client Name')
+                Tables\Columns\TextColumn::make('meja')
+                    ->label('Meja')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('order_items')
                     ->label('Order Items')
@@ -178,11 +206,13 @@ class OrderResource extends Resource
                             if (!$product) {
                                 return "Unknown product (x{$quantity})";
                             }
-                            return "{$product->label} (x{$quantity})";
+                            return "({$quantity}) {$product->label}";
                         }, $items);
 
-                        return implode(', ', $formattedItems);
+                        return implode("\n", $formattedItems);
                     })
+                    ->html()
+                    ->formatStateUsing(fn (string $state): string => nl2br(e($state)))
                     ->wrap()
                     ->searchable(query: function (Builder $query, string $search): Builder {
                         return $query->whereHas('products', function ($query) use ($search) {
@@ -237,16 +267,27 @@ class OrderResource extends Resource
                     ->hidden(fn (Order $record): bool => $record->status === 'Completed' || $record->status === 'Canceled')
                     ->successNotificationTitle('Order marked as completed'),
                 Action::make('cancel')
-                        ->button()
-                        ->label('Cancel')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->action(function (Order $record) {
-                            $record->update(['status' => 'Canceled']);
+                    ->button()
+                    ->label('Cancel')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->action(function (Order $record) {
+                        $record->update(['status' => 'Canceled']);
+                    })
+                    ->requiresConfirmation()
+                    ->hidden(fn (Order $record): bool => $record->status === 'Canceled' || $record->status === 'Completed')
+                    ->successNotificationTitle('Order marked as Canceled'),
+                Action::make('print_receipt')
+                    ->label('Print Receipt')
+                    ->icon('heroicon-o-printer')
+                    ->action(function (Order $record) {
+                        $pdf = Pdf::loadView('receipt', ['order' => $record]);
+                        return response($pdf->output())
+                            ->header('Content-Type', 'application/pdf')
+                            ->header('Content-Disposition', 'inline; filename="receipt.pdf"');
                         })
-                        ->requiresConfirmation()
-                        ->hidden(fn (Order $record): bool => $record->status === 'Canceled' || $record->status === 'Completed')
-                        ->successNotificationTitle('Order marked as Canceled'),
+                        ->openUrlInNewTab()
+                    ->hidden(fn (Order $record): bool => $record->status === 'Payment Received' || $record->status === 'On Process' || $record->status === 'Pending'),
                 Tables\Actions\ViewAction::make(),
             ])
             ->bulkActions([
@@ -271,5 +312,31 @@ class OrderResource extends Resource
             'view' => Pages\ViewOrder::route('/{record}'),
             'edit' => Pages\EditOrder::route('/{record}/edit'),
         ];
+    }
+
+}
+
+class CreateOrder extends Pages\CreateOrder
+{
+    protected function afterCreate(): void
+    {
+        Notification::make()
+            ->title('Order created successfully')
+            ->success()
+            ->send();
+    }
+
+    // Override the create() method to handle exceptions
+    public function create(bool $another = false): void
+    {
+        try {
+            parent::create($another);
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('Error creating order')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 }
