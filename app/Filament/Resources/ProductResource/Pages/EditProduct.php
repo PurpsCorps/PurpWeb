@@ -12,12 +12,6 @@ class EditProduct extends EditRecord
 {
     protected static string $resource = ProductResource::class;
 
-    protected function handleRecordUpdate(Model $record, array $data): Model
-    {
-        Log::info('EditProduct: Handling record update', ['data' => $data]);
-        return ProductResource::handleRecordUpdate($record, $data);
-    }
-
     protected function getHeaderActions(): array
     {
         return [

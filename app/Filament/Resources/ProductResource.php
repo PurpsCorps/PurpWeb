@@ -8,8 +8,8 @@ use App\Models\Product;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Forms\Form;
-use App\Models\Ingredient;
 use Filament\Tables\Table;
+use App\Models\ProductCategory;
 use Filament\Resources\Resource;
 use Illuminate\Support\Facades\Log;
 use Filament\Forms\Components\Select;
@@ -34,77 +34,56 @@ class ProductResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('label')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('price')
-                    ->required()
-                    ->numeric()
-                    ->prefix('Rp'),
-                Forms\Components\TextInput::make('stock')
-                    ->required()
-                    ->numeric(),
-                Forms\Components\FileUpload::make('image')
-                    ->image(),
-                Forms\Components\Select::make('status')
-                    ->options([
-                        'active' => 'Active',
-                        'inactive' => 'Inactive',
-                    ])
-                    ->required(),
-                Forms\Components\Section::make('Ingredients')
-                    ->schema([
-                        Repeater::make('ingredients')
-                        ->schema([
-                            Select::make('ingredient_id')
-                                ->label('Ingredient')
-                                ->options(Ingredient::pluck('name', 'id'))
-                                ->required(),
-                            TextInput::make('amount')
-                                ->numeric()
-                                ->required(),
-                        ])
-                        ->columns(2)
-                        ->minItems(1)
+                Forms\Components\Section::make('Product Category')
+                ->schema([
+                    Forms\Components\Select::make('productcategory_id')
+                        ->label('Product Category ID')
+                        ->options(ProductCategory::pluck('label', 'id'))
+                        ->searchable()
                         ->required()
-                        ->label('Ingredients')
-                        ->defaultItems(1)
-                        ->afterStateHydrated(function (Repeater $component, $state, Get $get, Set $set) {
-                            $productId = $get('id');
-                            Log::info("Hydrating ingredients for product ID: {$productId}");
-
-                            if ($productId && empty($state)) {
-                                $product = Product::find($productId);
-                                Log::info("Product found: " . ($product ? 'Yes' : 'No'));
-
-                                if ($product) {
-                                    $ingredients = $product->ingredients()->get();
-                                    Log::info("Ingredients found: " . $ingredients->count());
-
-                                    if ($ingredients->isNotEmpty()) {
-                                        $ingredientData = $ingredients->map(function ($ingredient) {
-                                            return [
-                                                'ingredient_id' => $ingredient->id,
-                                                'amount' => $ingredient->pivot->amount,
-                                            ];
-                                        })->toArray();
-
-                                        Log::info("Setting ingredients: " . json_encode($ingredientData));
-                                        $set('ingredients', $ingredientData);
-                                    } else {
-                                        Log::info("No ingredients found for product");
-                                    }
-                                } else {
-                                    Log::info("Product not found");
-                                }
-                            } else {
-                                Log::info("State is not empty or product ID is missing");
+                        ->live()
+                        ->afterStateUpdated(function ($state, Set $set) {
+                            $ProductCategory = ProductCategory::find($state);
+                            if ($ProductCategory) {
+                                $set('productcategory_label', $ProductCategory->label);
                             }
                         }),
-                    ]),
+                        Forms\Components\TextInput::make('productcategory_label')
+                        ->label('Product Category Label')
+                        ->disabled()
+                        ->dehydrated(),
+                ]),
+                Forms\Components\Section::make('Product Information')
+                ->schema([
+                    Forms\Components\TextInput::make('name')
+                        ->required()
+                        ->maxLength(255),
+                    Forms\Components\TextInput::make('label')
+                        ->required()
+                        ->maxLength(255),
+                    Forms\Components\TextInput::make('price')
+                        ->required()
+                        ->numeric()
+                        ->prefix('Rp'),
+                    Forms\Components\TextInput::make('stock')
+                        ->required()
+                        ->numeric(),
+                    Forms\Components\TextInput::make('slug')
+                        ->required(),
+                    Forms\Components\TextInput::make('tos')
+                        ->required(),
+                    Forms\Components\TextInput::make('duration')
+                        ->required()
+                        ->numeric(),
+                    Forms\Components\FileUpload::make('image')
+                        ->image(),
+                    Forms\Components\Select::make('status')
+                        ->options([
+                            'Active' => 'Active',
+                            'Inactive' => 'Inactive',
+                        ])
+                        ->required(),
+                ]),
             ]);
     }
 
@@ -115,6 +94,9 @@ class ProductResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('image'),
+                Tables\Columns\TextColumn::make('productcategory_label')
+                    ->label('Category')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('label')
@@ -155,75 +137,8 @@ class ProductResource extends Resource
         return [
             'index' => Pages\ListProducts::route('/'),
             'create' => Pages\CreateProduct::route('/create'),
+            'view' => Pages\ViewProduct::route('/{record}'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
-    }
-
-    public static function afterCreate(Model $record, array $data): void
-    {
-        Log::info('afterCreate called for product: ' . $record->id);
-        self::syncIngredients($record, $data);
-    }
-
-    public static function afterSave(Model $record, array $data): void
-    {
-        Log::info('afterSave called for product: ' . $record->id);
-        self::syncIngredients($record, $data);
-    }
-
-    public static function handleRecordCreation(array $data): Model
-    {
-        Log::info('ProductResource: Creating product with data: ' . json_encode($data));
-
-        $ingredients = $data['ingredients'] ?? [];
-        unset($data['ingredients']);
-
-        $product = static::getModel()::create($data);
-        self::syncIngredients($product, $ingredients);
-
-        Log::info('Product created with ID: ' . $product->id);
-        return $product;
-    }
-
-    public static function handleRecordUpdate(Model $record, array $data): Model
-    {
-        Log::info('ProductResource: Updating product with ID: ' . $record->id);
-        Log::info('Update data: ' . json_encode($data));
-
-        $ingredients = $data['ingredients'] ?? [];
-        unset($data['ingredients']);
-
-        $record->update($data);
-        self::syncIngredients($record, $ingredients);
-
-        Log::info('Product updated successfully');
-        return $record;
-    }
-
-    private static function syncIngredients(Model $record, array $ingredients): void
-    {
-        $ingredientsData = collect($ingredients)->mapWithKeys(function ($item) {
-            return [$item['ingredient_id'] => ['amount' => $item['amount']]];
-        })->toArray();
-
-        Log::info('Syncing ingredients: ' . json_encode($ingredientsData));
-        $record->ingredients()->sync($ingredientsData);
-    }
-
-    public static function mutateFormDataBeforeCreate(array $data): array
-    {
-        Log::info('Mutating form data before create:', $data);
-        return $data;
-    }
-
-    public static function mutateFormDataBeforeUpdate(Model $record, array $data): array
-    {
-        Log::info('Mutating form data before update:', $data);
-        return $data;
-    }
-
-    public static function getProductWithIngredients($productId)
-    {
-        return static::getModel()::with('ingredients')->findOrFail($productId);
     }
 }

@@ -2,22 +2,24 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\ProductCategoryResource\Pages;
+use App\Filament\Resources\ProductCategoryResource\RelationManagers;
+use App\Models\ProductCategory;
 use Filament\Forms;
-use Filament\Tables;
-use App\Models\Product;
 use Filament\Forms\Form;
-use App\Models\Ingredient;
-use Filament\Tables\Table;
 use Filament\Resources\Resource;
-use App\Filament\Resources\IngredientResource\Pages;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
-class IngredientResource extends Resource
+class ProductCategoryResource extends Resource
 {
-    protected static ?string $model = Ingredient::class;
+    protected static ?string $model = ProductCategory::class;
 
     protected static ?int $navigationSort = 3;
 
-    protected static ?string $navigationIcon = 'heroicon-o-beaker';
+    protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-check';
 
     protected static ?string $navigationGroup = 'Order Management';
 
@@ -27,18 +29,18 @@ class IngredientResource extends Resource
             ->schema([
                 Forms\Components\TextInput::make('name')
                     ->required()
-                    ->unique(ignoreRecord: true)
                     ->maxLength(255),
-                Forms\Components\TextInput::make('unit')
+                Forms\Components\TextInput::make('label')
                     ->required()
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('stock')
-                    ->required()
-                    ->numeric(),
-                Forms\Components\TextInput::make('price_per_unit')
-                    ->required()
-                    ->numeric()
-                    ->prefix('Rp'),
+                    ->maxLength(255),
+                Forms\Components\FileUpload::make('logo')
+                    ->image(),
+                Forms\Components\Select::make('status')
+                    ->options([
+                        'Active' => 'Active',
+                        'Inactive' => 'Inactive',
+                    ])
+                    ->required(),
             ]);
     }
 
@@ -46,15 +48,13 @@ class IngredientResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\ImageColumn::make('logo'),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('unit'),
-                Tables\Columns\TextColumn::make('stock')
-                    ->numeric()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('price_per_unit')
-                    ->money('IDR')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('label')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -78,12 +78,19 @@ class IngredientResource extends Resource
             ]);
     }
 
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListIngredients::route('/'),
-            'create' => Pages\CreateIngredient::route('/create'),
-            'edit' => Pages\EditIngredient::route('/{record}/edit'),
+            'index' => Pages\ListProductCategories::route('/'),
+            'create' => Pages\CreateProductCategory::route('/create'),
+            'edit' => Pages\EditProductCategory::route('/{record}/edit'),
         ];
     }
 }

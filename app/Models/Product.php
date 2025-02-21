@@ -6,6 +6,7 @@ use App\Models\Ingredient;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -14,12 +15,18 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
+        'id',
+        'productcategory_id',
+        'productcategory_label',
         'name',
         'label',
         'image',
         'price',
         'stock',
         'status',
+        'slug',
+        'tos',
+        'duration',
     ];
 
     protected static function booted()
@@ -33,14 +40,6 @@ class Product extends Model
         });
     }
 
-    public function ingredients()
-    {
-        $relation = $this->belongsToMany(Ingredient::class, 'ingredient_product', 'product_id', 'ingredient_id')->withPivot('amount');
-        Log::info("Loading ingredients for product {$this->id}: " . json_encode($relation));
-        return $relation;
-    }
-
-
     public function save(array $options = [])
     {
         Log::info('Saving product with data: ' . json_encode($this->attributes));
@@ -51,19 +50,5 @@ class Product extends Model
         } catch (\Exception $e) {
             Log::error('Error saving product: ' . $e->getMessage());
         }
-    }
-
-    public function saveIngredients($ingredients)
-    {
-        Log::info('Saving ingredients for product: ' . $this->id);
-        Log::info('Ingredients data:', $ingredients);
-
-        $ingredientsData = collect($ingredients)->mapWithKeys(function ($item) {
-            return [$item['ingredient_id'] => ['amount' => $item['amount']]];
-        })->toArray();
-
-        $this->ingredients()->sync($ingredientsData);
-
-        Log::info('Ingredients saved successfully');
     }
 }

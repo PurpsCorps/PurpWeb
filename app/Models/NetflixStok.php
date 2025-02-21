@@ -5,7 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Meja extends Model
+class NetflixStok extends Model
 {
     use HasFactory;
+
+    protected $fillable = [
+        'email',
+        'password',
+        'profilepin',
+        'usage',
+    ];
 }

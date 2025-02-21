@@ -37,47 +37,19 @@ class OrderResource extends Resource
     {
         return $form
             ->schema([
-                // Forms\Components\Section::make('Client Information')
-                //     ->schema([
-                //         Forms\Components\Select::make('username')
-                //             ->label('Client')
-                //             ->options(User::pluck('fullname', 'id'))
-                //             ->searchable()
-                //             ->required()
-                //             ->live()
-                //             ->afterStateUpdated(function ($state, Set $set) {
-                //                 $user = User::find($state);
-                //                 if ($user) {
-                //                     $set('client_fullname', $user->fullname);
-                //                     $set('client_email', $user->email);
-                //                     $set('client_dob', $user->date_of_birth);
-                //                 }
-                //             }),
-                //         Forms\Components\TextInput::make('client_fullname')
-                //             ->label('Client Name')
-                //             ->disabled()
-                //             ->dehydrated(),
-                //         Forms\Components\TextInput::make('client_email')
-                //             ->label('Email')
-                //             ->disabled()
-                //             ->dehydrated(),
-                //         Forms\Components\DatePicker::make('client_dob')
-                //             ->label('Date of Birth')
-                //             ->disabled()
-                //             ->dehydrated(),
-                //     ]),
+                Forms\Components\Section::make('Client Information')
+                    ->schema([
+                        Forms\Components\TextInput::make('discordid')
+                            ->label('Discord ID')
+                            ->required(),
+                    ]),
                 Forms\Components\Section::make('Order Information')
                     ->schema([
                         Forms\Components\TextInput::make('order_id')
                             ->label('Order ID')
-                            ->default(fn () => 'SERUIT/' . date('m') . '/' . strtoupper(Str::random(3)) . '/' . Order::query()->count()+1)
+                            ->default(fn () => 'PurpsCorp-' . date('m') . '-' . strtoupper(Str::random(3)) . '-' . Order::query()->count()+1)
                             ->disabled()
                             ->dehydrated()
-                            ->required(),
-                        Forms\Components\Select::make('meja')
-                            ->native(false)
-                            ->label('Meja')
-                            ->options(Meja::query()->where('status', 'available')->pluck('name', 'name'))
                             ->required(),
                         Forms\Components\Repeater::make('order_items')
                             ->schema([
@@ -186,9 +158,6 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('order_id')
                     ->label('Order ID')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('meja')
-                    ->label('Meja')
-                    ->searchable(),
                 Tables\Columns\TextColumn::make('order_items')
                     ->label('Order Items')
                     ->getStateUsing(function (Order $record): string {
@@ -206,7 +175,7 @@ class OrderResource extends Resource
                             if (!$product) {
                                 return "Unknown product (x{$quantity})";
                             }
-                            return "({$quantity}) {$product->label}";
+                            return "Qty: {$quantity} | {$product->label}";
                         }, $items);
 
                         return implode("\n", $formattedItems);

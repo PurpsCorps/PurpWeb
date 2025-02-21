@@ -15,10 +15,13 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('label');
+            $table->foreignId('productcategory_id')->constrained()->cascadeOnDelete();
+            $table->string('productcategory_label');
             $table->longText('image');
             $table->integer('price');
             $table->integer('stock');
             $table->string('slug');
+            $table->string('status');
             $table->timestamps();
         });
     }

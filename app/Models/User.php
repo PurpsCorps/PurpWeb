@@ -27,7 +27,6 @@ class User extends Authenticatable implements FilamentUser, HasName, HasAvatar
         'avatar',
         'date_of_birth',
         'email',
-        'email_verified',
         'password',
     ];
 
@@ -60,7 +59,7 @@ class User extends Authenticatable implements FilamentUser, HasName, HasAvatar
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->email && $this->hasVerifiedEmail();
+        return $this->email && $this->admin == 1;
     }
 
     public function getFilamentAvatarUrl(): ?string

@@ -11,10 +11,4 @@ use App\Filament\Resources\ProductResource;
 class CreateProduct extends CreateRecord
 {
     protected static string $resource = ProductResource::class;
-
-    protected function handleRecordCreation(array $data): Model
-    {
-        Log::info('CreateProduct: Handling record creation', ['data' => $data]);
-        return ProductResource::handleRecordCreation($data);
-    }
 }
